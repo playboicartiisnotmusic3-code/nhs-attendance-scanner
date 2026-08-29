@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+  <title>NHS Barcode Scanner Test</title>
+
+  <script src="https://unpkg.com/html5-qrcode"
+          type="text/javascript"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+
+    h1 {
+      margin-bottom: 5px;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 500px;
+      margin: 20px auto;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    #result {
+      max-width: 500px;
+      margin: 20px auto;
+      padding: 20px;
+      border-radius: 12px;
+      background: white;
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    .success {
+      background: #c8f7c5 !important;
+    }
+
+    .error {
+      background: #ffc7c7 !important;
+    }
+
+    .waiting {
+      background: white !important;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>NHS Attendance Scanner</h1>
+
+  <p>Point the <b>rear camera</b> at the barcode.</p>
+
+  <div id="reader"></div>
+
+  <div id="result" class="waiting">
+    Waiting for barcode...
+  </div>
+
+  <script>
+
+    let lastScanned = "";
+    let lastScanTime = 0;
+
+    function showResult(message, type) {
+
+      const result =
+        document.getElementById("result");
+
+      result.textContent = message;
+
+      result.className = type;
+    }
+
+
+    function onScanSuccess(decodedText) {
+
+      decodedText = decodedText.trim();
+
+      const now = Date.now();
+
+      // Prevent the same barcode from being
+      // repeatedly detected while still
+      // underneath the camera.
+      if (
+        decodedText === lastScanned &&
+        now - lastScanTime < 3000
+      ) {
+        return;
+      }
+
+      lastScanned = decodedText;
+      lastScanTime = now;
+
+
+      // ONLY accept exactly 6 digits.
+      if (!/^\d{6}$/.test(decodedText)) {
+
+        showResult(
+          "❌ INVALID BARCODE",
+          "error"
+        );
+
+        return;
+      }
+
+
+      // Successful test.
+      showResult(
+        "✓ ID DETECTED: " + decodedText,
+        "success"
+      );
+
+      console.log(
+        "Detected 6-digit ID:",
+        decodedText
+      );
+    }
+
+
+    function onScanFailure(error) {
+      // Normal scanning failures are ignored.
+    }
+
+
+    const scanner =
+      new Html5QrcodeScanner(
+        "reader",
+        {
+          fps: 10,
+
+          qrbox: {
+            width: 300,
+            height: 150
+          },
+
+          rememberLastUsedCamera: true,
+
+          supportedScanTypes: [
+            Html5QrcodeScanType.SCAN_TYPE_CAMERA
+          ]
+        },
+
+        false
+      );
+
+
+    scanner.render(
+      onScanSuccess,
+      onScanFailure
+    );
+
+  </script>
+
+</body>
+
+</html>
