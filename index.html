@@ -411,48 +411,24 @@
      */
 
     const scanner =
-      new Html5QrcodeScanner(
-
-        "reader",
-
-        {
-
-          /*
-           * Scan approximately 10 times per second.
-           */
-
-          fps: 10,
-
-
-          /*
-           * Rectangle where the barcode should be positioned.
-           */
-
-          qrbox: {
-            width: 300,
-            height: 150
-          },
-
-
-          /*
-           * Remember the camera selected by the user.
-           */
-
-          rememberLastUsedCamera: true,
-
-
-          /*
-           * Only allow camera scanning.
-           */
-
-          supportedScanTypes: [
-            Html5QrcodeScanType.SCAN_TYPE_CAMERA
-          ]
-
-        },
-
-        false
-      );
+  new Html5QrcodeScanner(
+    "reader",
+    {
+      fps: 10,
+      qrbox: { width: 300, height: 150 },
+      rememberLastUsedCamera: true,
+      supportedScanTypes: [
+        Html5QrcodeScanType.SCAN_TYPE_CAMERA
+      ],
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128
+      ],
+      videoConstraints: {
+        facingMode: { exact: "environment" }
+      }
+    },
+    false
+  );
 
 
     /*
