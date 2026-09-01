@@ -7,7 +7,7 @@
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0">
 
-  <title>NHS Barcode Scanner Test</title>
+  <title>NHS Attendance Scanner</title>
 
   <script src="https://unpkg.com/html5-qrcode"
           type="text/javascript"></script>
@@ -40,8 +40,9 @@
       padding: 20px;
       border-radius: 12px;
       background: white;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: bold;
+      white-space: pre-line;
     }
 
     .success {
@@ -52,28 +53,37 @@
       background: #ffc7c7 !important;
     }
 
-    .waiting {
-      background: white !important;
+    .processing {
+      background: #fff0b3 !important;
     }
   </style>
+
 </head>
 
 <body>
 
   <h1>NHS Attendance Scanner</h1>
 
-  <p>Point the <b>rear camera</b> at the barcode.</p>
+  <p>Point the rear camera at the barcode.</p>
 
   <div id="reader"></div>
 
-  <div id="result" class="waiting">
+  <div id="result">
     Waiting for barcode...
   </div>
 
+
   <script>
 
+    // YOUR GOOGLE APPS SCRIPT WEB APP URL
+    const API_URL =
+      "https://script.google.com/macros/s/AKfycbywDRCkZslf-LXKNvwev1vsF1iahWsY0TBWWz93JsCLQTBwXJv4ChtN469aQO-DNt8H/exec";
+
+
+    let processing = false;
     let lastScanned = "";
     let lastScanTime = 0;
+
 
     function showResult(message, type) {
 
@@ -83,34 +93,121 @@
       result.textContent = message;
 
       result.className = type;
+
+    }
+
+
+    async function sendIDToServer(id) {
+
+      try {
+
+        const response =
+          await fetch(API_URL, {
+
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/x-www-form-urlencoded"
+            },
+
+            body:
+              "id=" +
+              encodeURIComponent(id)
+
+          });
+
+
+        const data =
+          await response.json();
+
+
+        if (data.success) {
+
+          showResult(
+            "✓ ID FOUND\n" +
+            data.firstName +
+            " " +
+            data.lastName +
+            "\n\nID: " +
+            data.id,
+            "success"
+          );
+
+        } else {
+
+          showResult(
+            "❌ " +
+            data.message,
+            "error"
+          );
+
+        }
+
+
+      } catch (error) {
+
+        console.error(error);
+
+        showResult(
+          "❌ CONNECTION ERROR\n" +
+          "Could not contact attendance server.",
+          "error"
+        );
+
+      }
+
+
+      // Allow another scan after 1 second.
+      setTimeout(function() {
+        processing = false;
+      }, 1000);
+
     }
 
 
     function onScanSuccess(decodedText) {
 
-      decodedText = decodedText.trim();
+      if (processing) {
+        return;
+      }
 
-      const now = Date.now();
 
-      // Prevent the same barcode from being
-      // repeatedly detected while still
-      // underneath the camera.
+      decodedText =
+        decodedText.trim();
+
+
+      const now =
+        Date.now();
+
+
+      // Ignore repeated detection
+      // of the same barcode.
       if (
         decodedText === lastScanned &&
         now - lastScanTime < 3000
       ) {
+
         return;
+
       }
 
-      lastScanned = decodedText;
-      lastScanTime = now;
+
+      lastScanned =
+        decodedText;
+
+      lastScanTime =
+        now;
 
 
-      // ONLY accept exactly 6 digits.
+      // IMPORTANT:
+      // Only accept exactly six digits.
       if (!/^\d{6}$/.test(decodedText)) {
 
         showResult(
-          "❌ INVALID BARCODE",
+          "❌ INVALID BARCODE\n\n" +
+          "The scanned value must be\n" +
+          "exactly 6 digits.",
           "error"
         );
 
@@ -118,27 +215,35 @@
       }
 
 
-      // Successful test.
+      processing = true;
+
+
       showResult(
-        "✓ ID DETECTED: " + decodedText,
-        "success"
+        "⏳ Checking ID " +
+        decodedText +
+        "...",
+        "processing"
       );
 
-      console.log(
-        "Detected 6-digit ID:",
-        decodedText
-      );
+
+      sendIDToServer(decodedText);
+
     }
 
 
     function onScanFailure(error) {
-      // Normal scanning failures are ignored.
+
+      // Normal camera scanning failures
+      // are ignored.
+
     }
 
 
     const scanner =
       new Html5QrcodeScanner(
+
         "reader",
+
         {
           fps: 10,
 
