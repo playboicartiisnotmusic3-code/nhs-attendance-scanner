@@ -43,6 +43,10 @@
       font-size: 22px;
       font-weight: bold;
       white-space: pre-line;
+      min-height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .success {
@@ -55,6 +59,10 @@
 
     .processing {
       background: #fff0b3 !important;
+    }
+
+    .late {
+      background: #ffe08a !important;
     }
   </style>
 
@@ -75,15 +83,34 @@
 
   <script>
 
-    // YOUR GOOGLE APPS SCRIPT WEB APP URL
+    /*
+     * ============================================================
+     * GOOGLE APPS SCRIPT BACKEND
+     * ============================================================
+     */
+
     const API_URL =
       "https://script.google.com/macros/s/AKfycbywDRCkZslf-LXKNvwev1vsF1iahWsY0TBWWz93JsCLQTBwXJv4ChtN469aQO-DNt8H/exec";
 
 
+    /*
+     * ============================================================
+     * SCANNER STATE
+     * ============================================================
+     */
+
     let processing = false;
+
     let lastScanned = "";
+
     let lastScanTime = 0;
 
+
+    /*
+     * ============================================================
+     * DISPLAY RESULT
+     * ============================================================
+     */
 
     function showResult(message, type) {
 
@@ -97,35 +124,41 @@
     }
 
 
-    async function sendIDToServer(id) {
+    /*
+     * ============================================================
+     * SEND ID TO GOOGLE APPS SCRIPT
+     *
+     * Uses JSONP instead of fetch().
+     *
+     * This avoids the cross-origin/CORS problem that occurs
+     * when GitHub Pages communicates with Google Apps Script.
+     * ============================================================
+     */
 
-      try {
+    function sendIDToServer(id) {
 
-        const response =
-          await fetch(API_URL, {
-
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/x-www-form-urlencoded"
-            },
-
-            body:
-              "id=" +
-              encodeURIComponent(id)
-
-          });
+      const callbackName =
+        "nhsCallback_" + Date.now();
 
 
-        const data =
-          await response.json();
+      /*
+       * Create callback function that Google Apps Script
+       * will call with the result.
+       */
+
+      window[callbackName] = function(data) {
+
+        console.log("Server response:", data);
 
 
         if (data.success) {
 
+          /*
+           * Successful ID
+           */
+
           showResult(
-            "✓ ID FOUND\n" +
+            "✓ ID FOUND\n\n" +
             data.firstName +
             " " +
             data.lastName +
@@ -136,6 +169,10 @@
 
         } else {
 
+          /*
+           * Server rejected the ID
+           */
+
           showResult(
             "❌ " +
             data.message,
@@ -145,33 +182,119 @@
         }
 
 
-      } catch (error) {
+        /*
+         * Clean up callback.
+         */
 
-        console.error(error);
+        delete window[callbackName];
+
+
+        const oldScript =
+          document.getElementById(callbackName);
+
+        if (oldScript) {
+          oldScript.remove();
+        }
+
+
+        /*
+         * Allow another scan after 1 second.
+         */
+
+        setTimeout(function() {
+
+          processing = false;
+
+        }, 1000);
+
+      };
+
+
+      /*
+       * Create script request.
+       *
+       * Because this is a <script> request, the browser
+       * does not apply the normal fetch() CORS restriction.
+       */
+
+      const script =
+        document.createElement("script");
+
+
+      script.id =
+        callbackName;
+
+
+      script.src =
+        API_URL +
+        "?id=" +
+        encodeURIComponent(id) +
+        "&callback=" +
+        encodeURIComponent(callbackName);
+
+
+      /*
+       * Handle connection failure.
+       */
+
+      script.onerror = function() {
+
+        console.error(
+          "Could not contact Google Apps Script."
+        );
+
 
         showResult(
-          "❌ CONNECTION ERROR\n" +
+          "❌ CONNECTION ERROR\n\n" +
           "Could not contact attendance server.",
           "error"
         );
 
-      }
+
+        delete window[callbackName];
+
+        script.remove();
 
 
-      // Allow another scan after 1 second.
-      setTimeout(function() {
-        processing = false;
-      }, 1000);
+        setTimeout(function() {
+
+          processing = false;
+
+        }, 1000);
+
+      };
+
+
+      /*
+       * Add request to page.
+       */
+
+      document.body.appendChild(script);
 
     }
 
 
+    /*
+     * ============================================================
+     * BARCODE SUCCESS
+     * ============================================================
+     */
+
     function onScanSuccess(decodedText) {
+
+      /*
+       * Do not process another barcode while the current
+       * one is being checked.
+       */
 
       if (processing) {
         return;
       }
 
+
+      /*
+       * Remove accidental spaces.
+       */
 
       decodedText =
         decodedText.trim();
@@ -181,8 +304,13 @@
         Date.now();
 
 
-      // Ignore repeated detection
-      // of the same barcode.
+      /*
+       * html5-qrcode can detect the same barcode many times
+       * while it is sitting in front of the camera.
+       *
+       * Ignore the same barcode for 3 seconds.
+       */
+
       if (
         decodedText === lastScanned &&
         now - lastScanTime < 3000
@@ -200,8 +328,25 @@
         now;
 
 
-      // IMPORTANT:
-      // Only accept exactly six digits.
+      /*
+       * ========================================================
+       * STRICT ID VALIDATION
+       * ========================================================
+       *
+       * NHS IDs must be exactly 6 digits.
+       *
+       * Examples:
+       *
+       * 123456  -> accepted
+       * 012345  -> accepted
+       * 12345   -> rejected
+       * 1234567 -> rejected
+       * ABC123  -> rejected
+       *
+       * This prevents the scanner from accidentally accepting
+       * only part of an invalid barcode.
+       */
+
       if (!/^\d{6}$/.test(decodedText)) {
 
         showResult(
@@ -215,29 +360,55 @@
       }
 
 
+      /*
+       * Lock scanner processing.
+       */
+
       processing = true;
 
 
+      /*
+       * Show loading state.
+       */
+
       showResult(
-        "⏳ Checking ID " +
+        "⏳ Checking ID\n\n" +
         decodedText +
         "...",
         "processing"
       );
 
 
+      /*
+       * Send ID to backend.
+       */
+
       sendIDToServer(decodedText);
 
     }
 
 
+    /*
+     * ============================================================
+     * SCAN FAILURE
+     * ============================================================
+     *
+     * html5-qrcode calls this constantly while looking for a
+     * barcode, so we intentionally do nothing here.
+     */
+
     function onScanFailure(error) {
 
-      // Normal camera scanning failures
-      // are ignored.
+      // Normal scanning failures are ignored.
 
     }
 
+
+    /*
+     * ============================================================
+     * START CAMERA SCANNER
+     * ============================================================
+     */
 
     const scanner =
       new Html5QrcodeScanner(
@@ -245,23 +416,48 @@
         "reader",
 
         {
+
+          /*
+           * Scan approximately 10 times per second.
+           */
+
           fps: 10,
+
+
+          /*
+           * Rectangle where the barcode should be positioned.
+           */
 
           qrbox: {
             width: 300,
             height: 150
           },
 
+
+          /*
+           * Remember the camera selected by the user.
+           */
+
           rememberLastUsedCamera: true,
+
+
+          /*
+           * Only allow camera scanning.
+           */
 
           supportedScanTypes: [
             Html5QrcodeScanType.SCAN_TYPE_CAMERA
           ]
+
         },
 
         false
       );
 
+
+    /*
+     * Display scanner.
+     */
 
     scanner.render(
       onScanSuccess,
